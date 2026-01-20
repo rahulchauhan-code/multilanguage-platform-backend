@@ -1,8 +1,12 @@
 package com.blog.multilanguage_platform.controller;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.blog.multilanguage_platform.dto.Post;
 import com.blog.multilanguage_platform.dto.PostRequest;
+import com.blog.multilanguage_platform.dto.Post_content;
 import com.blog.multilanguage_platform.dto.Users;
 import com.blog.multilanguage_platform.repositeries.PostRepo;
 import com.blog.multilanguage_platform.repositeries.Post_ContentRepo;
@@ -33,6 +38,8 @@ import jakarta.transaction.Transactional;
 @RequestMapping("/api/posts")
 @CrossOrigin(origins = "http://localhost:5173", allowCredentials = "true")
 public class PostController {
+	private static final Logger logger = LoggerFactory.getLogger(PostController.class);
+
 	@Autowired
 	private PostServices postServices;
 	@Autowired
@@ -51,8 +58,20 @@ public class PostController {
 	}
 	// get all posts
 	@GetMapping("/")
-	public ResponseEntity<List<Post>> getAllPosts() {
-	    return ResponseEntity.ok(this.postServices.getAllPosts());
+	public ResponseEntity<List<Post>> getAllPosts(@RequestParam(required = false) String lang) {
+	    List<Post> posts = this.postServices.getAllPosts();
+	    
+	    // Apply translation if lang parameter is provided
+	    if (lang != null && !lang.isEmpty()) {
+	        for (Post post : posts) {
+	            if (post.getCatogery() != null && !post.getCatogery().isEmpty()) {
+	                String translatedCategory = translationService.translateText(post.getCatogery(), lang);
+	                post.setCatogery(translatedCategory);
+	            }
+	        }
+	    }
+	    
+	    return ResponseEntity.ok(posts);
 	}
 	//Delete Post By Id
 	@DeleteMapping("/{postId}")
@@ -107,16 +126,43 @@ public class PostController {
 	@GetMapping("/user/{userId}")
 	public ResponseEntity<List<Post>> getPostsByUserId(@PathVariable int userId, @RequestParam(required = false) String lang) {
 	    
+	    logger.debug("getPostsByUserId called for user={} lang={}", userId, lang);
 	    List<Post> posts = this.postServices.getPostsByUserId(userId);
+	    List<Post> result = new ArrayList<>();
 	    
-	    if (lang != null && !lang.isEmpty()) {
-	        posts.forEach(post -> {
-	            // Translate the category
+	    for (Post post : posts) {
+	        // translate category if requested and not null
+	        if (lang != null && !lang.isEmpty() && post.getCatogery() != null && !post.getCatogery().isEmpty()) {
 	            String translatedCategory = translationService.translateText(post.getCatogery(), lang);
+	            logger.debug("Translated category '{}' -> '{}' for lang={}", post.getCatogery(), translatedCategory, lang);
 	            post.setCatogery(translatedCategory);
-	            
-	        });
+	        }
+	        // fetch associated contents
+	        List<Post_content> contents = postContentRepo.findByPostid(post.getPostId());
+	        if (lang != null && !lang.isEmpty() && contents != null) {
+	            for (Post_content pc : contents) {
+	                if (pc.getTitle() != null && !pc.getTitle().isEmpty()) {
+	                    String t = translationService.translateText(pc.getTitle(), lang);
+	                    logger.debug("Translated title '{}' -> '{}' for lang={}", pc.getTitle(), t, lang);
+	                    pc.setTitle(t);
+	                }
+	                if (pc.getContent() != null && !pc.getContent().isEmpty()) {
+	                    String c = translationService.translateText(pc.getContent(), lang);
+	                    logger.debug("Translated content (postId={}) for lang={}, first30='{}'", pc.getPostid(), lang, c.length() > 30 ? c.substring(0,30) : c);
+	                    pc.setContent(c);
+	                }
+	            }
+	        }
+	        post.setContents(contents);
+	        result.add(post);
 	    }
-	    return ResponseEntity.ok(posts);
+	    return ResponseEntity.ok(result);
+	}
+
+	// Translation debug endpoint to inspect external API behavior
+	@GetMapping("/translate-debug")
+	public ResponseEntity<Map<String, Object>> translateDebug(@RequestParam String q, @RequestParam String lang) {
+		Map<String, Object> debug = translationService.translateDebug(q, lang);
+		return ResponseEntity.ok(debug);
 	}
 }
