@@ -19,8 +19,8 @@ import lombok.NoArgsConstructor;
 public class Users {
 	@Id
 	//@GeneratedValue(strategy = GenerationType.AUTO)
-	// Use IDENTITY so PostgreSQL can auto-increment without pre-created sequences
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "users_seq_generator")
+    @SequenceGenerator(name = "users_seq_generator", sequenceName = "users_seq", allocationSize = 1)
 	@Column(name = "USER_ID")
 	private Integer userId;
 	private String name;

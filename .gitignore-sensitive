@@ -1,9 +1,0 @@
-# Created by Render deployment script
-.render
-
-# Sensitive configuration (DO NOT COMMIT)
-application-prod.properties
-application-local.properties
-
-# Database credentials should be in environment variables
-# Remove hardcoded credentials before committing to GitHub!

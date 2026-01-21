@@ -19,8 +19,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class Post {
 	@Id
-	// Use IDENTITY for PostgreSQL auto-increment
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "posts_seq_gen")
+    @SequenceGenerator(name = "posts_seq_gen", sequenceName = "posts_seq", allocationSize = 1)
 	private int postId;
 	private int authorId;
 	@Column(name = "category")

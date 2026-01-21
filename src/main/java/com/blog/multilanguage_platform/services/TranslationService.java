@@ -25,6 +25,12 @@ public class TranslationService {
 
     private static final Logger logger = LoggerFactory.getLogger(TranslationService.class);
 
+    private final RestTemplate restTemplate;
+
+    public TranslationService(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
+
     // Configurable primary API
     @Value("${translation.api.url:https://translate.argosopentech.com/translate}")
     private String apiUrl;
@@ -69,7 +75,6 @@ public class TranslationService {
         debug.put("target", normalizedTarget);
         debug.put("apiUrl", apiUrl);
         try {
-            RestTemplate restTemplate = new RestTemplate();
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
@@ -84,15 +89,13 @@ public class TranslationService {
 
             HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(requestMap, headers);
 
-            logger.debug("Making translation request to: {} with params: source=auto, target={}", apiUrl, normalizedTarget);
             ResponseEntity<Map> response = restTemplate.postForEntity(apiUrl, requestEntity, Map.class);
             debug.put("statusCode", response.getStatusCode().value());
             debug.put("body", response.getBody());
-            logger.debug("Translation API response: {}", response.getBody());
             return debug;
         } catch (Exception e) {
             debug.put("error", e.getMessage());
-            logger.error("Primary translation API call failed: {} - {}", e.getClass().getSimpleName(), e.getMessage());
+            logger.warn("Primary translation API call failed: {}", e.getMessage());
             return debug;
         }
     }
@@ -110,8 +113,10 @@ public class TranslationService {
             for (String k : keys) {
                 if (m.containsKey(k)) {
                     Object v = m.get(k);
-                    if (v != null) result = v.toString();
-                    if (result != null) break;
+                    if (v != null) {
+                        result = v.toString();
+                        break;
+                    }
                 }
             }
             // Some instances return { "data": { "translations": [ { "translatedText": "..." } ] } }
@@ -139,13 +144,13 @@ public class TranslationService {
             if (direct != null) result = direct.toString();
         }
         
-        // URL decode the result to handle %20, %0, etc.
+        // URL decode the result to remove %20, %0A, etc.
         if (result != null && !result.isEmpty()) {
             try {
                 result = URLDecoder.decode(result, StandardCharsets.UTF_8.name());
+                logger.debug("URL decoded translation result");
             } catch (Exception e) {
-                logger.warn("Failed to URL decode translation result: {}", e.getMessage());
-                // Return the un-decoded result if decoding fails
+                logger.warn("Failed to URL decode translation: {}", e.getMessage());
             }
         }
         
@@ -155,10 +160,11 @@ public class TranslationService {
     // Unofficial Google translate fallback (no API key required) — uses public endpoint
     private String callGoogleFallback(String text, String target) {
         try {
-            RestTemplate rest = new RestTemplate();
             String encoded = UriUtils.encode(text, StandardCharsets.UTF_8);
             String url = String.format("https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=%s&dt=t&q=%s", target, encoded);
-            Object resp = rest.getForObject(url, Object.class);
+            Object resp = restTemplate.getForObject(url, Object.class);
+            String result = null;
+            
             if (resp instanceof List) {
                 // The response is nested lists — extract first translated segment
                 List outer = (List) resp;
@@ -173,26 +179,24 @@ public class TranslationService {
                                 if (translatedPiece != null) sb.append(translatedPiece.toString());
                             }
                         }
-                        String out = sb.toString();
-                        // Decode URL-encoded characters
-                        try {
-                            out = URLDecoder.decode(out, StandardCharsets.UTF_8.name());
-                        } catch (Exception e) {
-                            logger.debug("Could not URL decode Google fallback result: {}", e.getMessage());
-                        }
-                        return out;
+                        result = sb.toString();
                     }
                 }
             } else if (resp != null) {
-                String result = resp.toString();
+                result = resp.toString();
+            }
+            
+            // URL decode to remove %20, %0A, etc.
+            if (result != null && !result.isEmpty()) {
                 try {
                     result = URLDecoder.decode(result, StandardCharsets.UTF_8.name());
+                    logger.debug("URL decoded Google fallback result");
                 } catch (Exception e) {
-                    logger.debug("Could not URL decode response: {}", e.getMessage());
+                    logger.warn("Failed to URL decode Google result: {}", e.getMessage());
                 }
-                return result;
             }
-            return null;
+            
+            return result;
         } catch (Exception e) {
             logger.warn("Google fallback failed: {}", e.getMessage());
             return null;
