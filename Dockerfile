@@ -1,17 +1,26 @@
-# Use Java 17
-FROM eclipse-temurin:17-jdk-alpine
+# -------- Build stage --------
+FROM eclipse-temurin:17-jdk-alpine AS build
 
-# Set working directory
 WORKDIR /app
 
-# Copy project files
-COPY . .
+COPY mvnw .
+COPY .mvn .mvn
+COPY pom.xml .
 
-# Build the application
+RUN chmod +x mvnw
+RUN ./mvnw dependency:go-offline
+
+COPY src src
 RUN ./mvnw clean package -DskipTests
 
-# Expose port
+# -------- Run stage --------
+FROM eclipse-temurin:17-jre-alpine
+
+WORKDIR /app
+
+# Copy jar from build stage
+COPY --from=build /app/target/*.jar app.jar
+
 EXPOSE 8080
 
-# Run the JAR
-CMD ["java", "-jar", "target/*.jar"]
+ENTRYPOINT ["java", "-jar", "app.jar"]
